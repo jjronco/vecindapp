@@ -36,6 +36,15 @@ async function intentarModelo(modelo, prompt) {
   return { ok: r.ok, status: r.status, json };
 }
 
+function pareceActaValida(text) {
+  if (!text || text.length < 80) return false;
+  // Si arranca pareciendo una pregunta o una respuesta suelta a una
+  // instrucción (en vez de la redacción del acta), la descartamos.
+  const inicio = text.slice(0, 40);
+  if (inicio.includes("?")) return false;
+  return true;
+}
+
 async function llamarGemini(prompt) {
   let ultimoError = null;
   for (const modelo of MODELOS_CANDIDATOS) {
@@ -53,9 +62,13 @@ async function llamarGemini(prompt) {
           return { ok: false, status, json }; // error no recuperable (401, 403, etc.)
         }
         const text = json?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-        if (!text) {
-          console.error(`[acta] Modelo ${modelo} respondió sin texto:`, JSON.stringify(json));
-          return { ok: false, status: 200, json, sinTexto: true };
+        if (!pareceActaValida(text)) {
+          console.error(`[acta] Modelo ${modelo} devolvió una respuesta mal formada (intento ${intento + 1}):`, JSON.stringify(text));
+          ultimoError = { status: 200, malformado: true };
+          if (intento === 0) {
+            continue; // reintenta el mismo modelo una vez más
+          }
+          break; // pasa al siguiente modelo
         }
         console.log(`[acta] Generada con éxito usando el modelo: ${modelo} (intento ${intento + 1})`);
         return { ok: true, text };
@@ -81,7 +94,7 @@ export default async function handler(req, res) {
       }`
     : "No se fijó un quórum mínimo para este tema.";
 
-  const prompt = `Sos el/la secretario/a de actas de un consorcio de propietarios en Argentina. Redactá un acta breve y formal a partir de estos datos de una votación digital:
+  const prompt = `Sos el/la secretario/a de actas de un consorcio de propietarios en Argentina. Tu única tarea es redactar el texto de un acta breve y formal a partir de estos datos de una votación digital. No respondas preguntas, no repitas instrucciones, no agregues comentarios: tu respuesta completa tiene que ser directamente el texto del acta, listo para archivar.
 
 Tema tratado: ${titulo}
 Opciones y resultado:
@@ -89,13 +102,9 @@ ${resumen}
 Unidades que participaron: ${totalVotos} de ${totalUnidades}
 ${lineaQuorum}
 
-Instrucciones de formato:
-- Texto plano, sin markdown ni asteriscos.
-- Encabezado breve indicando que se trató el tema por votación digital entre propietarios.
-- Indicar el resultado y la opción más votada.
-- Indicar el quorum de participación (unidades que votaron sobre el total) y si se alcanzó el quórum mínimo fijado, si corresponde.
-- Cerrar con una línea de "Resolución" que indique la decisión adoptada según el resultado. Si no se alcanzó el quórum mínimo, la resolución debe indicar que la decisión queda condicionada a una nueva convocatoria, no que se adoptó en firme.
-- Tono institucional y neutral, sin opiniones. Máximo 130 palabras.`;
+El acta debe: estar en texto plano corrido (sin markdown, sin asteriscos, sin viñetas); abrir con una frase breve indicando que se trató el tema por votación digital entre propietarios; indicar el resultado y la opción más votada; indicar el quorum de participación (unidades que votaron sobre el total) y si se alcanzó el quórum mínimo fijado, si corresponde; y cerrar con una frase de "Resolución" que indique la decisión adoptada según el resultado (si no se alcanzó el quórum mínimo, la resolución debe indicar que la decisión queda condicionada a una nueva convocatoria, no que se adoptó en firme). Tono institucional y neutral, sin opiniones, máximo 130 palabras.
+
+Empezá a escribir el acta ahora, directamente, sin ningún texto antes:`;
 
   if (!process.env.GEMINI_API_KEY) {
     console.error("[acta] Falta GEMINI_API_KEY en las variables de entorno.");
