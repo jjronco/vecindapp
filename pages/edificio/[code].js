@@ -57,12 +57,14 @@ function ConsultaCard({
   emitirVoto,
   busyId,
   cerrarYGenerarActa,
+  regenerarActa,
   cancelarConsulta,
 }) {
   const totalVotos = Object.keys(c.votos).length;
   const vencida = c.estado === "abierta" && estaVencida(c);
   const faltan = unidades.filter((u) => u.rol !== "admin" && c.votos[u.id] === undefined);
   const quorumAlcanzado = c.quorumMinimo ? totalVotos >= c.quorumMinimo : null;
+  const actaFallida = c.acta && c.acta.startsWith("No se pudo generar");
   const elegida = seleccion[c.id] !== undefined ? seleccion[c.id] : c.votos[user.id];
   const yaVotoEsto = c.votos[user.id];
   const cambioSinConfirmar = elegida !== undefined && elegida !== yaVotoEsto;
@@ -165,13 +167,26 @@ function ConsultaCard({
       {c.acta && (
         <>
           <div className="vpp-acta">{c.acta}</div>
-          <button
-            className="vpp-btn vpp-btn-ghost"
-            style={{ marginTop: 8, fontSize: 12, padding: "6px 12px" }}
-            onClick={() => navigator.clipboard.writeText(c.acta)}
-          >
-            Copiar acta
-          </button>
+          {actaFallida ? (
+            esAdmin && (
+              <button
+                className="vpp-btn vpp-btn-accent"
+                style={{ marginTop: 8 }}
+                disabled={busyId === c.id}
+                onClick={() => regenerarActa(c.id)}
+              >
+                {busyId === c.id ? "Generando…" : "Reintentar generar acta"}
+              </button>
+            )
+          ) : (
+            <button
+              className="vpp-btn vpp-btn-ghost"
+              style={{ marginTop: 8, fontSize: 12, padding: "6px 12px" }}
+              onClick={() => navigator.clipboard.writeText(c.acta)}
+            >
+              Copiar acta
+            </button>
+          )}
         </>
       )}
     </div>
@@ -591,6 +606,37 @@ export default function EdificioPage() {
     }).catch(() => {});
   }
 
+  // Para una consulta que ya quedó cerrada pero con un acta fallida (error de
+  // Gemini, por ejemplo) — vuelve a pedirla sin tocar el estado ni los votos.
+  async function regenerarActa(consultaId) {
+    setBusyId(consultaId);
+    const fresh = await fetchEdificio(code);
+    const c = fresh.consultas.find((x) => x.id === consultaId);
+    const totalUnidadesVotantes = fresh.unidades.filter((u) => u.rol !== "admin").length;
+    const conteo = c.opciones.map((_, i) => Object.values(c.votos).filter((v) => v === i).length);
+    const totalVotos = Object.keys(c.votos).length;
+
+    const acta = await pedirActa({
+      titulo: c.titulo,
+      opciones: c.opciones,
+      conteo,
+      totalVotos,
+      totalUnidades: totalUnidadesVotantes,
+      quorumMinimo: c.quorumMinimo || null,
+    });
+
+    c.acta = acta;
+    await persist(fresh);
+    setBusyId(null);
+    if (!acta.startsWith("No se pudo generar")) {
+      fetch("/api/notificar-acta", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codigoEdificio: code, consultaId }),
+      }).catch(() => {});
+    }
+  }
+
   async function enviarPropuesta(e) {
     e.preventDefault();
     if (!propuestaTexto.trim() || propuestaEnviando) return;
@@ -936,6 +982,7 @@ export default function EdificioPage() {
     emitirVoto,
     busyId,
     cerrarYGenerarActa,
+    regenerarActa,
     cancelarConsulta,
   };
 

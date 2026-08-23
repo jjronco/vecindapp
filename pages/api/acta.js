@@ -12,43 +12,57 @@ const MODELOS_CANDIDATOS = [
   "gemini-3.5-flash",
 ];
 
+// 503 (saturado) y 429 (límite de uso) suelen ser transitorios: vale la pena
+// esperar un instante y reintentar antes de darnos por vencidos.
+const TRANSITORIOS = new Set([503, 429]);
+const espera = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function intentarModelo(modelo, prompt) {
+  const r = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": process.env.GEMINI_API_KEY,
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: 500 },
+      }),
+    }
+  );
+  const json = await r.json();
+  return { ok: r.ok, status: r.status, json };
+}
+
 async function llamarGemini(prompt) {
   let ultimoError = null;
   for (const modelo of MODELOS_CANDIDATOS) {
-    try {
-      const r = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": process.env.GEMINI_API_KEY,
-          },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: 500 },
-          }),
+    for (let intento = 0; intento < 2; intento++) {
+      try {
+        const { ok, status, json } = await intentarModelo(modelo, prompt);
+        if (!ok) {
+          console.error(`[acta] Modelo ${modelo} respondió ${status} (intento ${intento + 1}):`, JSON.stringify(json));
+          ultimoError = { status, json };
+          if (TRANSITORIOS.has(status) && intento === 0) {
+            await espera(800);
+            continue; // reintenta el mismo modelo una vez
+          }
+          if (status === 404 || TRANSITORIOS.has(status)) break; // pasa al siguiente modelo
+          return { ok: false, status, json }; // error no recuperable (401, 403, etc.)
         }
-      );
-      const json = await r.json();
-      if (!r.ok) {
-        console.error(`[acta] Modelo ${modelo} respondió ${r.status}:`, JSON.stringify(json));
-        ultimoError = { status: r.status, json };
-        // 404 = el modelo no existe con ese nombre; probamos el siguiente candidato.
-        // Cualquier otro código (401, 403, 429...) no se arregla cambiando de modelo, cortamos ahí.
-        if (r.status === 404) continue;
-        return { ok: false, status: r.status, json };
+        const text = json?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (!text) {
+          console.error(`[acta] Modelo ${modelo} respondió sin texto:`, JSON.stringify(json));
+          return { ok: false, status: 200, json, sinTexto: true };
+        }
+        console.log(`[acta] Generada con éxito usando el modelo: ${modelo} (intento ${intento + 1})`);
+        return { ok: true, text };
+      } catch (e) {
+        console.error(`[acta] Error de conexión probando ${modelo}:`, e);
+        ultimoError = { status: null, error: String(e) };
       }
-      const text = json?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-      if (!text) {
-        console.error(`[acta] Modelo ${modelo} respondió sin texto:`, JSON.stringify(json));
-        return { ok: false, status: 200, json, sinTexto: true };
-      }
-      console.log(`[acta] Generada con éxito usando el modelo: ${modelo}`);
-      return { ok: true, text };
-    } catch (e) {
-      console.error(`[acta] Error de conexión probando ${modelo}:`, e);
-      ultimoError = { status: null, error: String(e) };
     }
   }
   return { ok: false, agotado: true, ultimoError };
