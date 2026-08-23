@@ -5,6 +5,7 @@ import Head from "next/head";
 import BuildingFacade from "../../components/BuildingFacade";
 import Mark from "../../components/Mark";
 import BellIcon from "../../components/BellIcon";
+import Footer from "../../components/Footer";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 const POLL_MS = 12000;
@@ -898,6 +899,7 @@ export default function EdificioPage() {
           Primera vez en tu unidad: el código inicial es <b>000000</b>. Te vamos a pedir que lo
           cambies apenas entres.
         </div>
+        <Footer />
       </div>
     );
   }
@@ -1303,6 +1305,7 @@ export default function EdificioPage() {
           <span className="vpp-roadmap-tag">Historial de expensas</span>
         </div>
       </div>
+      <Footer />
     </div>
   );
 }

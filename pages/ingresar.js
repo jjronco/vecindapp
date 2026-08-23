@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import BuildingFacade from "../components/BuildingFacade";
 import Mark from "../components/Mark";
+import Footer from "../components/Footer";
 
 export default function Ingresar() {
   const router = useRouter();
@@ -118,6 +119,7 @@ export default function Ingresar() {
           {buscando ? "Buscando…" : "Buscar edificio"}
         </button>
       </form>
+      <Footer />
     </div>
   );
 }

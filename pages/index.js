@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/router";
 import BuildingFacade from "../components/BuildingFacade";
 import Mark from "../components/Mark";
+import Footer from "../components/Footer";
 
 const FUNCIONES = [
   {
@@ -213,6 +214,7 @@ export default function Home() {
           <span className="vpp-roadmap-tag">Consulta entre edificios del barrio</span>
         </div>
       </div>
+      <Footer />
     </div>
   );
 }

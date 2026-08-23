@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import BuildingFacade from "../components/BuildingFacade";
 import Mark from "../components/Mark";
+import Footer from "../components/Footer";
 
 export default function Inscribir() {
   const router = useRouter();
@@ -160,6 +161,7 @@ export default function Inscribir() {
           {enviando ? "Inscribiendo…" : "Inscribir edificio"}
         </button>
       </form>
+      <Footer />
     </div>
   );
 }
