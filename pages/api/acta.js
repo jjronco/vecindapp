@@ -28,7 +28,10 @@ async function intentarModelo(modelo, prompt) {
       },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: 500 },
+        generationConfig: {
+          maxOutputTokens: 2048,
+          thinkingConfig: { thinkingBudget: 0 },
+        },
       }),
     }
   );
@@ -37,11 +40,14 @@ async function intentarModelo(modelo, prompt) {
 }
 
 function pareceActaValida(text) {
-  if (!text || text.length < 80) return false;
+  if (!text || text.length < 150) return false;
   // Si arranca pareciendo una pregunta o una respuesta suelta a una
   // instrucción (en vez de la redacción del acta), la descartamos.
   const inicio = text.slice(0, 40);
   if (inicio.includes("?")) return false;
+  // El prompt siempre pide cerrar con una línea de "Resolución": si no
+  // aparece, lo más probable es que el texto se haya cortado a mitad.
+  if (!/esoluci/i.test(text)) return false;
   return true;
 }
 
